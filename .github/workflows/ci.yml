@@ -1,0 +1,191 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore OrderFlow.sln
+
+      - name: Build
+        run: >
+          dotnet build OrderFlow.sln
+          --configuration Release
+          --no-restore
+
+      - name: Run tests with coverage
+        run: >
+          dotnet test
+          --solution OrderFlow.sln
+          --configuration Release
+          --no-build
+          --results-directory ./TestResults
+          --coverlet
+          --coverlet-output-format cobertura
+          --minimum-expected-tests 1
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results
+          path: TestResults
+          if-no-files-found: ignore
+
+  docker-smoke:
+    name: SQL Server & RabbitMQ Smoke Test
+    runs-on: ubuntu-latest
+    needs: build-and-test
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Build containers
+        run: docker compose build api fulfillment-worker
+
+      - name: Start infrastructure
+        run: docker compose up -d sqlserver rabbitmq
+
+      - name: Wait for SQL Server
+        run: |
+          echo "Waiting for SQL Server..."
+
+          for i in {1..45}; do
+            if docker compose exec -T sqlserver \
+              /opt/mssql-tools18/bin/sqlcmd \
+              -S localhost \
+              -U sa \
+              -P 'OrderFlow_2026!' \
+              -C \
+              -Q "SELECT 1" >/dev/null 2>&1; then
+              echo "SQL Server is ready."
+              exit 0
+            fi
+
+            sleep 2
+          done
+
+          docker compose logs sqlserver
+          exit 1
+
+      - name: Wait for RabbitMQ
+        run: |
+          echo "Waiting for RabbitMQ..."
+
+          for i in {1..30}; do
+            if docker compose exec -T rabbitmq rabbitmq-diagnostics -q ping; then
+              echo "RabbitMQ is ready."
+              exit 0
+            fi
+
+            sleep 2
+          done
+
+          docker compose logs rabbitmq
+          exit 1
+
+      - name: Start application
+        run: docker compose up -d api fulfillment-worker
+
+      - name: Wait for API
+        run: |
+          for i in {1..45}; do
+            if curl --fail --silent http://localhost:8081/health >/dev/null; then
+              echo "API is ready."
+              exit 0
+            fi
+
+            sleep 2
+          done
+
+          docker compose ps -a
+          docker compose logs api
+          exit 1
+
+      - name: Run end-to-end order flow
+        run: |
+          RESPONSE="$(curl --fail --silent \
+            -H 'Content-Type: application/json' \
+            -d '{
+              "externalOrderId":"CI-ORDER-001",
+              "customerNumber":"C-CI",
+              "customerName":"CI Customer",
+              "items":[
+                {
+                  "productNumber":"SKU-CI",
+                  "description":"CI Item",
+                  "quantity":1,
+                  "unitPrice":19.95
+                }
+              ]
+            }' \
+            http://localhost:8081/api/orders)"
+
+          ORDER_ID="$(echo "$RESPONSE" | jq -r '.id')"
+          echo "Created order: $ORDER_ID"
+
+          curl --fail --silent -X POST \
+            "http://localhost:8081/api/orders/$ORDER_ID/validate" >/dev/null
+
+          curl --fail --silent -X POST \
+            "http://localhost:8081/api/orders/$ORDER_ID/approve" >/dev/null
+
+          for i in {1..30}; do
+            COUNT="$(docker compose exec -T sqlserver \
+              /opt/mssql-tools18/bin/sqlcmd \
+              -S localhost \
+              -U sa \
+              -P 'OrderFlow_2026!' \
+              -C \
+              -d OrderFlow \
+              -h -1 \
+              -W \
+              -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM FulfillmentRecords WHERE OrderId = '$ORDER_ID';" \
+              | tr -d '\r[:space:]')"
+
+            if [ "$COUNT" = "1" ]; then
+              echo "RabbitMQ event was consumed exactly once."
+              exit 0
+            fi
+
+            sleep 2
+          done
+
+          echo "Fulfillment record was not created."
+          docker compose logs api
+          docker compose logs fulfillment-worker
+          exit 1
+
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          docker compose ps -a
+          docker compose logs sqlserver || true
+          docker compose logs rabbitmq || true
+          docker compose logs api || true
+          docker compose logs fulfillment-worker || true
+
+      - name: Stop containers
+        if: always()
+        run: docker compose down -v

@@ -1,0 +1,9 @@
+**/bin
+**/obj
+.vs
+.git
+.github
+TestResults
+coverage
+README.md
+LICENSE

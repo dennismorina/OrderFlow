@@ -1,0 +1,64 @@
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2025-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: "Developer"
+      MSSQL_SA_PASSWORD: "OrderFlow_2026!"
+    ports:
+      - "1436:1433"
+    volumes:
+      - orderflow-sql-data:/var/opt/mssql
+
+  rabbitmq:
+    image: rabbitmq:4.3.5-management
+    environment:
+      RABBITMQ_DEFAULT_USER: "orderflow"
+      RABBITMQ_DEFAULT_PASS: "orderflow_dev"
+    ports:
+      - "5673:5672"
+      - "15673:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: src/OrderFlow.Api/Dockerfile
+    environment:
+      ASPNETCORE_URLS: "http://+:8080"
+      ASPNETCORE_ENVIRONMENT: "Development"
+      ConnectionStrings__OrderFlow: "Server=sqlserver,1433;Database=OrderFlow;User Id=sa;Password=OrderFlow_2026!;TrustServerCertificate=True;Encrypt=False"
+      RabbitMq__Enabled: "true"
+      RabbitMq__HostName: "rabbitmq"
+      RabbitMq__Port: "5672"
+      RabbitMq__UserName: "orderflow"
+      RabbitMq__Password: "orderflow_dev"
+      RabbitMq__VirtualHost: "/"
+    ports:
+      - "8081:8080"
+    depends_on:
+      - sqlserver
+      - rabbitmq
+
+  fulfillment-worker:
+    build:
+      context: .
+      dockerfile: src/OrderFlow.FulfillmentWorker/Dockerfile
+    environment:
+      ConnectionStrings__OrderFlow: "Server=sqlserver,1433;Database=OrderFlow;User Id=sa;Password=OrderFlow_2026!;TrustServerCertificate=True;Encrypt=False"
+      RabbitMq__Enabled: "true"
+      RabbitMq__HostName: "rabbitmq"
+      RabbitMq__Port: "5672"
+      RabbitMq__UserName: "orderflow"
+      RabbitMq__Password: "orderflow_dev"
+      RabbitMq__VirtualHost: "/"
+    depends_on:
+      - sqlserver
+      - rabbitmq
+
+volumes:
+  orderflow-sql-data:

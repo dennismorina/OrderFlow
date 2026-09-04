@@ -1,0 +1,40 @@
+@baseUrl = http://localhost:5090
+
+### Create order
+POST {{baseUrl}}/api/orders
+Content-Type: application/json
+
+{
+  "externalOrderId": "SHOP-2026-4711",
+  "customerNumber": "C10001",
+  "customerName": "Example Customer",
+  "items": [
+    {
+      "productNumber": "ART-100",
+      "description": "Mechanical Keyboard",
+      "quantity": 2,
+      "unitPrice": 129.90
+    }
+  ]
+}
+
+### Replace with the id returned above
+@orderId = 00000000-0000-0000-0000-000000000000
+
+### Get order
+GET {{baseUrl}}/api/orders/{{orderId}}
+
+### Validate
+POST {{baseUrl}}/api/orders/{{orderId}}/validate
+
+### Approve
+POST {{baseUrl}}/api/orders/{{orderId}}/approve
+
+### Start processing
+POST {{baseUrl}}/api/orders/{{orderId}}/start-processing
+
+### Complete
+POST {{baseUrl}}/api/orders/{{orderId}}/complete
+
+### History
+GET {{baseUrl}}/api/orders/{{orderId}}/history
