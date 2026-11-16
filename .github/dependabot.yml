@@ -1,13 +1,23 @@
+
 version: 2
 
 updates:
+  # NuGet: Microsoft-Major-Updates nur manuell
   - package-ecosystem: "nuget"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 10
+    ignore:
+      - dependency-name: "Microsoft.*"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "System.*"
+        update-types:
+          - "version-update:semver-major"
 
+  # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -15,30 +25,77 @@ updates:
       day: "monday"
     open-pull-requests-limit: 5
 
+  # Docker: OrderFlow API
   - package-ecosystem: "docker"
     directory: "/src/OrderFlow.Api"
     schedule:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "mcr.microsoft.com/dotnet/aspnet"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "mcr.microsoft.com/dotnet/runtime"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "mcr.microsoft.com/dotnet/sdk"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "mcr.microsoft.com/dotnet/runtime-deps"
+        update-types:
+          - "version-update:semver-major"
 
+  # Docker: Fulfillment Worker
   - package-ecosystem: "docker"
     directory: "/src/OrderFlow.FulfillmentWorker"
     schedule:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "mcr.microsoft.com/dotnet/aspnet"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "mcr.microsoft.com/dotnet/runtime"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "mcr.microsoft.com/dotnet/sdk"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "mcr.microsoft.com/dotnet/runtime-deps"
+        update-types:
+          - "version-update:semver-major"
 
+  # Docker Compose
   - package-ecosystem: "docker-compose"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "mcr.microsoft.com/dotnet/aspnet"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "mcr.microsoft.com/dotnet/runtime"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "mcr.microsoft.com/dotnet/sdk"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "mcr.microsoft.com/dotnet/runtime-deps"
+        update-types:
+          - "version-update:semver-major"
 
+  # .NET SDK
   - package-ecosystem: "dotnet-sdk"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
